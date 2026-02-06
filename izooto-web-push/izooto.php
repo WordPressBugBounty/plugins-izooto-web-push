@@ -5,7 +5,7 @@
  * Description: Browser push notifications for your site, available in Chrome, Safari and Firefox.
  * Author: iZooto
  * Author URI: https://www.izooto.com
- * Version: 3.7.19
+ * Version: 3.7.20
  * License: GPL v2 or later
  *
  * @package izooto
@@ -19,9 +19,9 @@ if ( ! defined( 'IZOOTO_BASE_URL' ) ) {
 	define( 'IZOOTO_BASE_URL', plugin_dir_url( __FILE__ ) );
 }
 
-define( 'IZVERSION', '3.7.19' );
+define( 'IZVERSION', '3.7.20' );
 
-define( 'IZ_WP_API', 'https://middlewarev3.izooto.com/wordpress/integrate' );
+define( 'IZ_WP_API', 'https://a.izooto.com/wordpress/integrate' );
 
 /**
  * Create izooto object on install & show message

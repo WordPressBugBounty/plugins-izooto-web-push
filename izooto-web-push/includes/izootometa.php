@@ -377,7 +377,7 @@ function izooto_save_postdata( $post_id, $post ) {
  * @param array  $array as param.
  * @param string $url as param.
  */
-function izooto_curl_request( $array, $url = 'https://middlewarev3.izooto.com/wordpress/notification-push' ) {
+function izooto_curl_request( $array, $url = 'https://a.izooto.com/wordpress/notification-push' ) {
 	$response = wp_remote_post( $url, $array );
 	return $response;
 }
@@ -388,7 +388,7 @@ function izooto_curl_request( $array, $url = 'https://middlewarev3.izooto.com/wo
  * @param array  $array as param.
  * @param string $url as param.
  */
-function izooto_log_error( $array, $url = 'https://middlewarev3.izooto.com/wordpress/wp-log-error' ) {
+function izooto_log_error( $array, $url = 'https://a.izooto.com/wordpress/wp-log-error' ) {
 	$response = wp_remote_post( $url, $array );
 	return $response;
 }
