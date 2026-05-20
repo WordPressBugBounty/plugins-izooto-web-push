@@ -74,7 +74,7 @@ function izooto_notify_html( $post ) {
 	/* Get users current screen */
 	$current_screen = get_current_screen();
 	$screen         = 0;
-	include_once 'class-init.php';
+	include_once  plugin_dir_path(__FILE__) . 'class-init.php';
 	$iz_obj = new Init();
 	if ( ! empty( $current_screen ) ) {
 		if ( method_exists( $current_screen, 'is_block_editor' ) ) {
@@ -207,20 +207,36 @@ function izooto_create_notification_tbl() {
  * @param string $iz_notify_content as param.
  */
 function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify_content ) {
+	include_once  plugin_dir_path(__FILE__) . 'class-init.php';
+	$iz_obj             = new Init();
+	$iz_settings        = $iz_obj->izooto_get_option( 'izooto-settings' );
+	$limit_notification = 1;
 
-		include_once 'class-init.php';
-		$iz_obj             = new Init();
-		$iz_settings        = $iz_obj->izooto_get_option( 'izooto-settings' );
-		$limit_notification = 1;
+	$cookieOptons = array(
+		'expires' => time() + 10,
+		'path' => '/',
+		'secure' => is_ssl(),
+		'httponly' => false,
+		'samesite' => 'Lax'
+	);
 
-		/* Check if users max limit reached */
+	if ( ! is_array( $iz_settings ) ) {
+		return;
+	}
+	/* Check if users max limit reached */
 	if ( ! empty( $iz_settings['notify_count_date'] ) ) {
 		if ( strtotime( $iz_settings['notify_count_date']['current_date'] ) === strtotime( current_time( 'Y-m-d' ) ) ) {
 			if ( $iz_settings['notify_count_date']['notify_count'] >= $iz_settings['notify_count_date']['max_notify_count'] ) {
 				$limit_notification = 0;
-				setcookie( 'izmessage', 4, time() + 10, '/' );
+				setcookie( 'izmessage', 4, $cookieOptons );
 			}
 		}
+	}
+	if (!isset($iz_settings['token']) || empty(trim($iz_settings['token'])) ) {
+		return;
+	}
+	if ( ! isset( $iz_settings['pid'] ) || empty( trim( $iz_settings['pid'] ) ) ) {
+		return;
 	}
 
 	if ( $limit_notification ) {
@@ -233,8 +249,8 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
 
 		$post_data = array(
 			'platform'     => 1,
-			'token'        => $iz_settings['token'],
-			'pid'          => $iz_settings['pid'],
+			'token'        => trim( $iz_settings['token'] ),
+			'pid'          => trim( $iz_settings['pid'] ),
 			'title'        => $iz_notify_title,
 			'message'      => $iz_notify_content,
 			'landing_url'  => get_permalink( $post ),
@@ -251,10 +267,11 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
 		if ( ! empty( $banner_url ) ) {
 			$post_data['banner_url'] = trim( $banner_url );
 		}
-
 		$post_array = array(
 			'headers' => array(
 				'Content-Type' => 'application/x-www-form-urlencoded',
+				'Authorization' => 'Bearer ' . sanitize_text_field(trim( $iz_settings['token'] )),
+				'X-Site-Url' => esc_url( get_site_url() ),
 			),
 			'body'    => $post_data,
 		);
@@ -263,9 +280,9 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
 		$notification_request = izooto_curl_request( $post_array );
 
 		/* Save site title */
-		if ( isset( $_POST['iz_site_title_nonce'] ) && wp_verify_nonce( sanitize_key( $_POST['iz_site_title_nonce'] ), basename( __FILE__ ) ) ) {
+		if ( isset( $_POST['iz_site_title_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['iz_site_title_nonce'] ) ), basename( __FILE__ ) ) ) {
 			if ( isset( $_POST['iz_site_title'] ) && sanitize_key( $_POST['iz_site_title'] ) ) {
-				$iz_obj->izooto_update_option( 'izooto-site-name', $iz_notify_title );
+				$iz_obj->izooto_update_option( 'izooto-site-name', trim( $iz_notify_title ) );
 				$iz_obj->izooto_update_option( 'izooto-site-name-settings', 1 );
 			} else {
 				$iz_obj->izooto_update_option( 'izooto-site-name-settings', 0 );
@@ -275,6 +292,9 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
 		if ( ( ! empty( $notification_request ) ) && ( ! is_wp_error( $notification_request ) ) ) {
 			$response_body = json_decode( $notification_request['body'] );
 
+			if ( ! is_object($response_body) ) {
+				return;
+			}
 			if ( property_exists( $response_body, 'notification_id' ) ) {
 				if ( property_exists( $response_body, 'notification_count' ) ) {
 
@@ -287,12 +307,13 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
 					$izooto_op_new['notify_count_date']    = $notify_count_date;
 					$iz_obj->izooto_update_option( 'izooto-settings', $izooto_op_new );
 				}
-				setcookie( 'izmessage', 1, time() + 10, '/' );
+				// setcookie( 'izmessage', 1, time() + 10, '/' );
+				setcookie('izmessage', 1, $cookieOptons);
 			} elseif ( 'Daily campaign limit exceeded' === $response_body->message ) {
-					setcookie( 'izmessage', 4, time() + 10, '/' );
+					setcookie( 'izmessage', 4, $cookieOptons );
 			} elseif ( property_exists( $response_body, 'success' ) ) {
 				if ( ! $response_body->success ) {
-					setcookie( 'izmessage', 3, time() + 10, '/' );
+					setcookie( 'izmessage', 3, $cookieOptons );
 				}
 			}
 		} else {
@@ -300,14 +321,8 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
 				'pid'     => $iz_settings['pid'],
 				'message' => $notification_request->get_error_message(),
 			);
-			$post_array  = array(
-				'headers' => array(
-					'Content-Type' => 'application/x-www-form-urlencoded',
-				),
-				'body'    => $error_array,
-			);
-			izooto_log_error( $post_array );
-			setcookie( 'izmessage', 2, time() + 10, '/' );
+			izooto_log_error( $error_array );
+			setcookie( 'izmessage', 2, $cookieOptons );
 		}
 	}
 
@@ -320,18 +335,9 @@ function izooto_notification_send( $post_id, $post, $iz_notify_title, $iz_notify
  * @param string $post as param.
  */
 function izooto_save_postdata( $post_id, $post ) {
-
-	$error_array            = array(
-		'pid'     => $post_id,
-		'message' => $post->post_status,
-	);
-				$post_array = array(
-					'headers' => array(
-						'Content-Type' => 'application/x-www-form-urlencoded',
-					),
-					'body'    => array( 'pid' => wp_json_encode( $error_array ) ),
-				);
-
+				if ( ! current_user_can( 'edit_post', $post_id ) ) {
+					return;
+				}
 				if ( ( isset( $post_id ) ) && ( isset( $post ) ) ) {
 					$post_status = array(
 						'publish',
@@ -339,7 +345,7 @@ function izooto_save_postdata( $post_id, $post ) {
 					);
 					if ( ( 'post' === $post->post_type ) && ( in_array( $post->post_status, $post_status, true ) ) ) {
 
-						if ( isset( $_POST['izooto_notify_opt_nonce'] ) && wp_verify_nonce( sanitize_key( $_POST['izooto_notify_opt_nonce'] ), basename( __FILE__ ) ) ) {
+						if ( isset( $_POST['izooto_notify_opt_nonce'] ) && wp_verify_nonce( $_POST['izooto_notify_opt_nonce'], basename( __FILE__ ) ) ) {
 							if ( ! empty( $_POST['izooto_notify_opt'] ) ) {
 								if ( ( ! empty( $_POST['iz_notify_title'] ) ) && ( ! empty( $_POST['iz_notify_content'] ) ) ) {
 									$iz_notify_title   = sanitize_text_field( wp_unslash( $_POST['iz_notify_title'] ) );
@@ -355,15 +361,22 @@ function izooto_save_postdata( $post_id, $post ) {
 										izooto_create_notification_tbl();
 										global $wpdb;
 										$table_name              = $wpdb->prefix . 'iz_notifications_onpush';
-										$store_arr['post_id']    = $post_id;
+										$store_arr['post_id']    = (int) $post_id;
 										$store_arr['title']      = $iz_notify_title;
 										$store_arr['message']    = $iz_notify_content;
 										$store_arr['banner_url'] = $banner_url;
-										$wpdb->insert( $table_name, $store_arr );
+										$wpdb->insert( $table_name, $store_arr, array('%d', '%s', '%s', '%s') );
 
 									}
 								} else {
-									setcookie( 'izmessage', 5, time() + 10, '/' );
+									$cookieOptons = array(
+										'expires' => time() + 10,
+										'path' => '/',
+										'secure' => is_ssl(),
+										'httponly' => false,
+										'samesite' => 'Lax'
+									);
+									setcookie( 'izmessage', 5, $cookieOptons );
 								}
 							}
 						}
@@ -377,8 +390,8 @@ function izooto_save_postdata( $post_id, $post ) {
  * @param array  $array as param.
  * @param string $url as param.
  */
-function izooto_curl_request( $array, $url = 'https://a.izooto.com/wordpress/notification-push' ) {
-	$response = wp_remote_post( $url, $array );
+function izooto_curl_request( $array) {
+	$response = wp_remote_post( IZ_WP_PUSH_API, $array );
 	return $response;
 }
 
@@ -388,9 +401,26 @@ function izooto_curl_request( $array, $url = 'https://a.izooto.com/wordpress/not
  * @param array  $array as param.
  * @param string $url as param.
  */
-function izooto_log_error( $array, $url = 'https://a.izooto.com/wordpress/wp-log-error' ) {
-	$response = wp_remote_post( $url, $array );
-	return $response;
+function izooto_log_error( $array ) {
+	$izooto_op = get_option('izooto-settings', []);
+    if ( ! is_array($izooto_op) ) {
+        return;
+    }
+	if ( ! isset( $izooto_op['token'] ) ) {
+		return;
+	}
+	$wpurl    = esc_url( get_site_url() );
+	$headers = array(
+		'Content-Type' => 'application/x-www-form-urlencoded',
+		'Authorization' => 'Bearer ' . sanitize_text_field(trim($izooto_op['token'] )),
+		'X-Site-Url' => $wpurl,
+	);
+
+	$post_array = array(
+		'headers' => $headers,
+		'body'    => $array,
+	);
+	return wp_remote_post( IZ_WP_ERROR_LOG_API, $post_array );
 }
 
 /**
@@ -405,7 +435,7 @@ function izooto_settings_update( $settings ) {
 	$izooto_op['pid']   = $settings['pid'];
 	$izooto_op['cdn']   = $settings['cdn'];
 	$izooto_op['sw']    = $settings['sw'];
-	$izooto_op['gcm']   = $settings['gcm'];
+	// $izooto_op['gcm']   = $settings['gcm'];
 	$izooto_op['token'] = $settings['token'];
 
 	if ( isset( $settings['wcom'] ) ) {
@@ -436,64 +466,44 @@ add_action( 'transition_post_status', 'izooto_send_new_post', 10, 3 );
  * @param string $post as param.
  */
 function izooto_send_new_post( $new_status, $old_status, $post ) {
+	// debug log
+	if ( wp_is_post_revision( $post->ID ) ) {
+    	return;
+	}
 	try {
 		if ( 'publish' === $new_status && 'publish' !== $old_status && 'post' === $post->post_type ) {
 			$post_id = $post->ID;
+			if ( ! current_user_can( 'edit_post', $post_id ) ) {
+				return;
+			}
 			izooto_create_notification_tbl();
 			global $wpdb;
 			$table_name = $wpdb->prefix . 'iz_notifications_onpush';
-			global $wpdb;
-
 			$results = wp_cache_get( $post_id, 'iz_notifications_onpush' );
 			if ( ! $results ) {
-				$results = $wpdb->get_results(
-					$wpdb->prepare(
-						// phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnquotedComplexPlaceholder
-						'SELECT * FROM %1s WHERE post_id=%d',
-						$table_name,
-						$post_id
-					),
-					ARRAY_A
+				$query = $wpdb->prepare(
+					"SELECT * FROM {$table_name} WHERE post_id = %d",
+					$post_id
 				);
+				$results = $wpdb->get_results($query, ARRAY_A);
 				wp_cache_add( $post_id, $results, 'iz_notifications_onpush' );
 			}
-
 			$rowcount = $wpdb->num_rows;
 			if ( $rowcount > 0 ) {
-				$title = '';
-				if ( isset( $results[0]->title ) ) {
-					$title = $results[0]->title;
-				} else {
-					$title = $results[0]['title'];
+				$title = $results[0]['title'] ?? '';
+				$message = $results[0]['message'] ?? '';
+				if ( empty( $title ) || empty( $message ) ) {
+					return;
 				}
-				$message = '';
-				if ( isset( $results[0]->message ) ) {
-					$message = $results[0]->message;
-				} else {
-					$message = $results[0]['message'];
-				}
-				$error_array    = array(
-					'pid'   => $post->ID,
-					'title' => $title,
-				);
-					$post_array = array(
-						'headers' => array(
-							'Content-Type' => 'application/x-www-form-urlencoded',
-						),
-						'body'    => $error_array,
-					);
-					izooto_notification_send( $post->ID, $post, $title, $message );
-			} else {
-				$error_array    = array( 'pid' => $post->ID );
-					$post_array = array(
-						'headers' => array(
-							'Content-Type' => 'application/x-www-form-urlencoded',
-						),
-						'body'    => $error_array,
-					);
+				izooto_notification_send( $post->ID, $post, $title, $message );
 			}
 		}
 	} catch ( Exception $e ) {
-		$t = 0;
+		$error_array = array(
+					'post_id' => $post->ID,
+					'message' => 'internal_error in sending izooto_send_new_post: ',
+				);
+		izooto_log_error($error_array);
+				
 	}
 }

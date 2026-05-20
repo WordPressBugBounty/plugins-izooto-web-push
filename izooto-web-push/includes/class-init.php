@@ -122,11 +122,12 @@ class Init {
 			$table_name      = $wpdb->prefix . 'iz_notifications_onpush';
 			$charset_collate = $wpdb->get_charset_collate();
 			$sql             = "CREATE TABLE IF NOT EXISTS $table_name (
-				id bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+				id bigint(20) NOT NULL AUTO_INCREMENT,
 				post_id bigint(20) NOT NULL,
 				title  varchar(60) NOT NULL default '',
 				message varchar(150) NOT NULL default '',
-				banner_url text ) $charset_collate;";
+				banner_url text,
+				PRIMARY KEY  (id) ) $charset_collate;";
 
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 			dbDelta( $sql );
@@ -174,28 +175,28 @@ class Init {
 	/**
 	 * Show wocommerce installation alert.
 	 */
-	public function izooto_wcom_install_alert() {
-		$wpurl    = get_bloginfo( 'wpurl' );
-		$email    = get_bloginfo( 'admin_email' );
-		$wpurl    = ( '' !== $wpurl ) ? $wpurl : '';
-		$email    = ( '' !== $email ) ? $email : '';
-		$wpurl    = esc_url_raw( $wpurl );
-		$url      = IZ_WP_API . '?ref=wp&cref=wcom&act=install&url=' . rawurlencode( $wpurl ) . '&email=' . rawurlencode( sanitize_email( $email ) ) . '&izversion=' . IZVERSION;
-		$response = self::izooto_wp_remote_get( $url );
-	}
+	// public function izooto_wcom_install_alert() {
+	// 	$wpurl    = get_bloginfo( 'wpurl' );
+	// 	$email    = get_bloginfo( 'admin_email' );
+	// 	$wpurl    = ( '' !== $wpurl ) ? $wpurl : '';
+	// 	$email    = ( '' !== $email ) ? $email : '';
+	// 	$wpurl    = esc_url_raw( $wpurl );
+	// 	$url      = IZ_WP_API . '?ref=wp&cref=wcom&act=install&url=' . rawurlencode( $wpurl ) . '&email=' . rawurlencode( sanitize_email( $email ) ) . '&izversion=' . IZVERSION;
+	// 	$response = self::izooto_wp_remote_get( $url );
+	// }
 
-	/**
-	 * Show wocommerce uninstallation alert.
-	 */
-	public function izooto_wcom_uninstall_alert() {
-		$wpurl    = get_bloginfo( 'wpurl' );
-		$email    = get_bloginfo( 'admin_email' );
-		$wpurl    = ( '' !== $wpurl ) ? $wpurl : '';
-		$email    = ( '' !== $email ) ? $email : '';
-		$wpurl    = esc_url_raw( $wpurl );
-		$url      = IZ_WP_API . '?ref=wp&cref=wcom&act=uninstall&url=' . rawurlencode( $wpurl ) . '&email=' . rawurlencode( sanitize_email( $email ) ) . '&izversion=' . IZVERSION;
-		$response = self::izooto_wp_remote_get( $url );
-	}
+	// /**
+	//  * Show wocommerce uninstallation alert.
+	//  */
+	// public function izooto_wcom_uninstall_alert() {
+	// 	$wpurl    = get_bloginfo( 'wpurl' );
+	// 	$email    = get_bloginfo( 'admin_email' );
+	// 	$wpurl    = ( '' !== $wpurl ) ? $wpurl : '';
+	// 	$email    = ( '' !== $email ) ? $email : '';
+	// 	$wpurl    = esc_url_raw( $wpurl );
+	// 	$url      = IZ_WP_API . '?ref=wp&cref=wcom&act=uninstall&url=' . rawurlencode( $wpurl ) . '&email=' . rawurlencode( sanitize_email( $email ) ) . '&izversion=' . IZVERSION;
+	// 	$response = self::izooto_wp_remote_get( $url );
+	// }
 
 	/**
 	 * Empty izooto's flag.
@@ -207,7 +208,7 @@ class Init {
 		$izooto_op['pid']   = '';
 		$izooto_op['cdn']   = '';
 		$izooto_op['sw']    = '';
-		$izooto_op['gcm']   = '';
+		// $izooto_op['gcm']   = '';
 		$izooto_op['token'] = '';
 		return $izooto_op;
 	}
@@ -222,11 +223,12 @@ class Init {
 		$key            = sanitize_text_field( $key );
 		$transient_key  = 'iz_config_' . $key;
 		$transient_body = $this->izooto_transient_get( $transient_key );
+		$wp_site_url        = esc_url( get_site_url() );
 		if ( false !== $transient_body ) {// if cached.
 			$response = $transient_body;
 		} else {
 			$args     = array( 'timeout' => 15 );
-			$response = wp_safe_remote_get( IZ_WP_API . '?key=' . rawurlencode( $key ) . '&izversion=' . IZVERSION, $args );
+			$response = wp_safe_remote_get( IZ_WP_API . '?key=' . rawurlencode( $key ) . '&url=' . rawurlencode( $wp_site_url ) . '&izversion=' . IZVERSION, $args );
 			if ( wp_remote_retrieve_response_code( $response ) === 200 ) {
 				$this->izooto_transient_set( $transient_key, $response, 60 * 60 );
 			}
@@ -353,45 +355,97 @@ function error_alert() {
 	echo wp_json_encode( $status );
 	wp_die();
 }
-
 // Main.
-$izooto      = new Init();
-$tokensubmit = filter_input( INPUT_POST, 'tokensubmit' );
-if ( isset( $tokensubmit ) && sanitize_text_field( $tokensubmit ) ) {
-	$err       = 0;
-	$izooto_op = array();
-	$token     = filter_input( INPUT_POST, 'token' );
-	if ( empty( $token ) || '' === sanitize_text_field( $token ) ) {
-		$err       = 1;
-		$izooto_op = $izooto->izooto_empty_config();
-		$izooto->izooto_update_option( 'izooto-settings', $izooto_op );
-		Init::izooto_add_action( 'admin_notices', 'empty_token' );
-	}
-	if ( 0 === $err ) {
-		$get_json = $izooto->izooto_request( sanitize_text_field( $token ) );
-		$get_user = json_decode( $get_json, true );
-		if ( 0 !== $get_user['error'] ) {
-			$err       = 1;
-			$izooto_op = $izooto->izooto_empty_config();
-			Init::izooto_add_action( 'admin_notices', 'invalid_token' );
-			$izooto->izooto_update_option( 'izooto-settings', $izooto_op );
-		}
-	}
+add_action('admin_init', 'izooto_handle_post_token_submit');
+$izooto = new Init();
+function izooto_handle_post_token_submit() {
 
-	if ( 0 === $err && 0 === $get_user['error'] ) {
-		$izooto_op['url']   = $get_user['url'];
-		$izooto_op['uid']   = $get_user['uid'];
-		$izooto_op['pid']   = $get_user['pid'];
-		$izooto_op['cdn']   = $get_user['js-url'];
-		$izooto_op['sw']    = $get_user['sw-url'];
-		$izooto_op['gcm']   = $get_user['gcmSenderId'];
-		$izooto_op['token'] = sanitize_text_field( $token );
+    // Only admin
+    if ( ! is_admin() || ! current_user_can('manage_options') ) {
+        return;
+    }
 
-		$izooto->izooto_update_option( 'izooto-settings', $izooto_op );
-		Init::izooto_add_action( 'admin_notices', 'izooto_notice_messages' );
-		$fresh_user = filter_input( INPUT_POST, 'freshUser' );
-		if ( 1 === sanitize_text_field( $fresh_user ) ) {
-			echo '<script>var newUser=1;</script>';
-		}
-	}
+    // Only POST
+    if ( $_SERVER['REQUEST_METHOD'] !== 'POST' ) {
+        return;
+    }
+
+    // Nonce check
+    if (
+        ! isset($_POST['izooto_token_nonce']) ||
+        ! wp_verify_nonce($_POST['izooto_token_nonce'], 'izooto_token_action')
+    ) {
+        return;
+    }
+
+    $izooto = new Init();
+
+    // Strict submit check
+    $tokensubmit = isset($_POST['tokensubmit']) 
+        ? sanitize_text_field( wp_unslash($_POST['tokensubmit']) ) 
+        : '';
+
+    if ( $tokensubmit !== 'submit' ) {
+        return;
+    }
+
+    $err       = 0;
+    $izooto_op = [];
+
+    // Safe token read
+    $token = isset($_POST['token']) 
+        ? sanitize_text_field( wp_unslash($_POST['token']) ) 
+        : '';
+
+    if ( empty($token) ) {
+        $err       = 1;
+        $izooto_op = $izooto->izooto_empty_config();
+        $izooto->izooto_update_option('izooto-settings', $izooto_op);
+        Init::izooto_add_action('admin_notices', 'empty_token');
+        return;
+    }
+
+    // API call
+    $get_json = $izooto->izooto_request($token);
+    $get_user = json_decode($get_json, true);
+
+    // Validate response
+    if ( ! is_array($get_user) || ! isset($get_user['error']) ) {
+        $err = 1;
+    }
+
+    if ( $err === 0 && (int)$get_user['error'] !== 0 ) {
+        $err       = 1;
+        $izooto_op = $izooto->izooto_empty_config();
+        $izooto->izooto_update_option('izooto-settings', $izooto_op);
+        Init::izooto_add_action('admin_notices', 'invalid_token');
+        return;
+    }
+
+    // Success case
+    if ( $err === 0 ) {
+
+        $izooto_op['url']   = isset($get_user['url']) ? sanitize_text_field($get_user['url']) : '';
+        $izooto_op['uid']   = isset($get_user['uid']) ? sanitize_text_field($get_user['uid']) : '';
+        $izooto_op['pid']   = isset($get_user['pid']) ? sanitize_text_field($get_user['pid']) : '';
+        $izooto_op['cdn']   = isset($get_user['js-url']) ? sanitize_text_field($get_user['js-url']) : '';
+        $izooto_op['sw']    = isset($get_user['sw-url']) ? sanitize_text_field($get_user['sw-url']) : '';
+        // $izooto_op['gcm']   = isset($get_user['gcmSenderId']) ? sanitize_text_field($get_user['gcmSenderId']) : '';
+        $izooto_op['token'] = $token;
+
+        $izooto->izooto_update_option('izooto-settings', $izooto_op);
+
+        Init::izooto_add_action('admin_notices', 'izooto_notice_messages');
+
+        // Fresh user
+        if ( isset($_POST['freshUser']) ) {
+            $fresh_user = sanitize_text_field( wp_unslash($_POST['freshUser']) );
+
+            if ( (int)$fresh_user === 1 ) {
+                add_action('admin_footer', function () {
+                    echo '<script>var newUser=1;</script>';
+                });
+            }
+        }
+    }
 }

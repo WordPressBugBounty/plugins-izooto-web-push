@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 add_action( 'init', 'register_izooto_scripts' );// To load scripts after finishing the page load and before any headers are sent.
 add_action( 'admin_menu', 'izooto_menu' );
 add_action( 'admin_enqueue_scripts', 'izooto_enqueue' );
+add_action('admin_init', 'izooto_handle_post');
 
 /**
  * Function to register assets.
@@ -71,14 +72,32 @@ function izooto_enqueue( $hook ) {
 
 
 $slip_izooto = filter_input( INPUT_POST, 'slipIzooto' );
-if ( isset( $slip_izooto ) && is_admin() ) {
-	if ( 'reset' === sanitize_text_field( $slip_izooto ) ) {
+function izooto_handle_post() {
+    if (!current_user_can('manage_options')){
+		return;
+	}
+	// =========================
+    // Validate nonce
+    // =========================
+    if (
+        ! isset($_POST['izooto_token_nonce']) ||
+        ! wp_verify_nonce($_POST['izooto_token_nonce'], 'izooto_token_action')
+    ) {
+        return;
+    }
+
+    // Get existing settings safely
+    $izooto_op = get_option('izooto-settings', []);
+    if ( ! is_array($izooto_op) ) {
+        $izooto_op = [];
+    }
+	if ( isset( $slip_izooto ) && is_admin() && 'reset' === sanitize_text_field( $slip_izooto ) ) {
 		$izooto_op['url']   = '';
 		$izooto_op['uid']   = '';
 		$izooto_op['pid']   = '';
 		$izooto_op['cdn']   = '';
 		$izooto_op['sw']    = '';
-		$izooto_op['gcm']   = '';
+		// $izooto_op['gcm']   = '';
 		$izooto_op['token'] = '';
 		update_option( 'izooto-settings', $izooto_op );
 	}
@@ -115,11 +134,6 @@ if ( ! function_exists( 'izooto_fn' ) ) {
 		$opfunction = get_option( 'izooto-settings' );
 		?>
 
-	<!--<div class="plugin-container" style="margin-top: 25px;">
-		<div class="plugin-header">
-			class="izooto-logo"> <span> Web Push for WordPress</span>
-		</div>-->
-
 		<?php izooto_check_sw_exist(); ?>
 		<div class="izooto-wordpress">
 		<div class="header">
@@ -138,19 +152,19 @@ if ( ! function_exists( 'izooto_fn' ) ) {
 					<div class="left">
 						<div class="grey-border width-400" style="margin-top: 16px;">
 							<label>iZooto ID</label>
+							<?php if (current_user_can('manage_options')) : ?>
 								<form method="post">
 									<div class="inline-content" style="margin-top: 6px;">
 								<?php settings_fields( 'izooto-settings' ); ?>
 								<?php do_settings_sections( 'izooto-settings' ); ?>
+								<?php wp_nonce_field('izooto_token_action', 'izooto_token_nonce'); ?>
 								<?php
 								if ( isset( $opfunction['token'] ) && '' !== $opfunction['token'] ) {
 									?>
 									<input type="text" name="token"  id="token" class="form-control" placeholder="Place iZooto ID here to enable Web Push." style="margin-right: 5px;" value="<?php echo esc_attr( $opfunction['token'] ); ?> " readonly>
-									<!--<button id="edit-token"  onclick="editizootoId();"class="stroked-button icon-button" style="margin-left: 5px;"><i class="material-icons" style="font-size: 20px;">edit</i></button>-->
 
 									<a href="javascript:void(0)" id="edit-token" onclick="editizootoId()" class="stroked-button icon-button" style="margin-left: 5px;"><i class="material-icons" style="font-size: 20px;">edit</i></a>
 									<button type='submit' style="cursor:pointer;display:none" name='tokensubmit' id='tokensubmit' value='submit' class="primary-button" style="margin-left: 5px; ">Save</button>
-									<!--<button type="submit" name="tokensubmit" id="tokensubmit" value="submit" class="stroked-button icon-button" style="margin-left: 5px;"><i class="material-icons" style="font-size: 20px;">edit</i></button>-->
 									<?php
 								} else {
 									?>
@@ -159,9 +173,9 @@ if ( ! function_exists( 'izooto_fn' ) ) {
 									<?php
 								}
 								?>
-								<!--<a href="javascript:void(0)" class="primary-button" style="margin-left: 5px;">Save</a>-->
 							<input id='freshUser' name='freshUser' hidden>
 							</div></form>
+							<?php endif; ?>
 						</div>
 
 						<div class="instructions width-500" style="margin-top: 30px;">
@@ -178,7 +192,6 @@ if ( ! function_exists( 'izooto_fn' ) ) {
 					<div class="right">
 						<div class="align-mid">
 							<label style="margin-bottom: 20px;">Verify setup by opening your website in a new tab.</label>
-							<!--<img src="prompt-2.svg" width="350">-->
 							<img  width="350" src="<?php echo esc_url_raw( IZOOTO_BASE_URL . 'assets/images/prompt-2.svg' ); ?>"
 						</div>
 					</div>
@@ -188,8 +201,6 @@ if ( ! function_exists( 'izooto_fn' ) ) {
 			</div>
 	</div>
 	<div class="izooto-footer">Please contact <a href="mailto: support@izooto.com">support@izooto.com</a> for queries</div>
-	<!--</div>
-	<div class="plugin-footer">Please contact support@izooto.com, if you run into any issues.</div>-->
 		<?php
 	}
 }
